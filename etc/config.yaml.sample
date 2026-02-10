@@ -1,0 +1,28 @@
+# 代理服务器配置
+Sock5Proxy:
+  Host: 127.0.0.1 # 代理服务器地址
+  Port: 1080 # 代理服务器端口
+  Enable: true # 是否启用代理
+
+# 电报App配置
+TelegramApp:
+  ApiId: 1570912
+  ApiHash: 6e5be26cb0623190c048adb6bb066be7
+
+# LLM配置
+LLM:
+  BaseURL: https://api.openai.com/v1  # 兼容 OpenAI API 的端点
+  APIKey: your-api-key-here
+  Model: gpt-4o  # 如 gpt-4o, deepseek-chat, qwen-plus
+  MaxTokens: 128000  # 模型上下文窗口大小
+
+# 总结配置
+Summary:
+  Cron: "0 0 * * *" # cron 表达式，每天0点(北京时间)执行
+  RetentionDays: 7 # 消息保留天数
+  RangeDays: 1 # 总结天数，1=仅昨天，7=最近7天
+  NotifyMode: private # "private" / "group" / "both"
+  NotifyUserIds: # 私聊通知的目标用户ID列表
+    - 7779208645
+  RetryTimes: 3 # 总结失败重试次数，默认 3
+  RetryInterval: 60 # 重试间隔（秒），默认 60

@@ -30,3 +30,12 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+
+data
+logs
+etc/*.yml
+etc/*.yaml
+
+# bin file
+talk-trace-bot
+__debug_bin.exe*
