@@ -85,7 +85,6 @@ cp etc/config.yaml.sample etc/config.yaml
 2. 编辑 `etc/config.yaml`，配置以下内容：
 
 - **TelegramApp**: 配置 Telegram API ID 和 Hash（从 https://my.telegram.org 获取）
-- **SourceChatId**: 要监控的群聊 ID
 - **LLM**: 配置 LLM API 端点和密钥
 - **Summary**: 配置总结时间、保留天数和通知方式
 
@@ -101,7 +100,6 @@ cp etc/config.yaml.sample etc/config.yaml
 
 - `ApiId`: Telegram API ID
 - `ApiHash`: Telegram API Hash
-- `SourceChatId`: 要监控的群聊 ID（负数表示群组）
 
 ### LLM
 
@@ -125,7 +123,7 @@ cp etc/config.yaml.sample etc/config.yaml
 
 ## 工作流程
 
-1. Bot 启动后自动监听指定群聊的消息
+1. Bot 启动后自动监听并保存群聊消息
 2. 所有消息自动保存到 SQLite 数据库
 3. 按配置的 cron 时间执行每日总结：
    - 生成每位成员的聊天摘要
