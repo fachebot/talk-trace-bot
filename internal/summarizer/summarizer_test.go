@@ -43,7 +43,7 @@ type mockSummaryWriter struct {
 	err error
 }
 
-func (m *mockSummaryWriter) Create(ctx context.Context, data *model.SummaryData) (*ent.Summary, error) {
+func (m *mockSummaryWriter) CreateOrUpdate(ctx context.Context, data *model.SummaryData) (*ent.Summary, error) {
 	if m.err != nil {
 		return nil, m.err
 	}

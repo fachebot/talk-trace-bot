@@ -25,7 +25,7 @@ type llmSummarizer interface {
 
 // summaryWriter 写入摘要（便于测试注入 mock）
 type summaryWriter interface {
-	Create(ctx context.Context, data *model.SummaryData) (*ent.Summary, error)
+	CreateOrUpdate(ctx context.Context, data *model.SummaryData) (*ent.Summary, error)
 }
 
 type Summarizer struct {
@@ -81,7 +81,7 @@ func (s *Summarizer) SummarizeRange(ctx context.Context, chatID int64, startTime
 		return nil, fmt.Errorf("解析 LLM 返回的 JSON 失败: %w", err)
 	}
 
-	// 将 member_summaries 写入 Summary 表
+	// 将 member_summaries 写入 Summary 表（同一群组、同一发送者、同一日期不重复插入，已存在则更新）
 	for _, m := range result.MemberSummaries {
 		summaryData := &model.SummaryData{
 			ChatID:      chatID,
@@ -90,7 +90,7 @@ func (s *Summarizer) SummarizeRange(ctx context.Context, chatID int64, startTime
 			SummaryDate: startTime,
 			Content:     m.Summary,
 		}
-		if _, err := s.summaryModel.Create(ctx, summaryData); err != nil {
+		if _, err := s.summaryModel.CreateOrUpdate(ctx, summaryData); err != nil {
 			logger.Errorf("[Summarizer] 保存摘要失败: %v", err)
 		}
 	}
