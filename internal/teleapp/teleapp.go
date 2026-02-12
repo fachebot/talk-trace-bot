@@ -209,7 +209,7 @@ func (app *TeleApp) getUpdates(listener *client.Listener) {
 				continue
 			}
 
-			logger.Debugf("[TeleApp] 接收消息: %s[%d] -> %s", chat.Title, chat.Id, text.Text.Text)
+			logger.Debugf("[TeleApp] 接收消息: %s[%d] -> %s(%d)", chat.Title, chat.Id, text.Text.Text, message.Id)
 
 			// 过滤私聊和密聊
 			switch chat.Type.ChatTypeType() {

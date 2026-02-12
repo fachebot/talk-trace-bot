@@ -92,13 +92,20 @@ func (s *Summarizer) SummarizeRange(ctx context.Context, chatID int64, startTime
 
 // buildMessageLink 构造 Telegram 超级群组消息链接
 // TDLib 超级群组 chat_id 格式为 -100XXXXXXXXXX，channel_id = -chat_id - 1000000000000
+// 频道/超级群组中 TDLib 的 message.Id 为内部格式（逻辑 ID 左移 20 位），t.me 链接使用逻辑 ID，需右移还原
 func buildMessageLink(chatID int64, messageID int64) string {
 	channelID := -chatID - 1000000000000
 	if channelID <= 0 {
 		// 非超级群组，返回空
 		return ""
 	}
-	return fmt.Sprintf("https://t.me/c/%d/%d", channelID, messageID)
+	// TDLib 内部格式的 message_id 很大（约 2^30 以上），需 >>20 得到链接用逻辑 ID；否则已是链接用 ID
+	const tdlibInternalIDThreshold = 1 << 30
+	linkMsgID := messageID
+	if messageID >= tdlibInternalIDThreshold {
+		linkMsgID = int64(uint64(messageID) >> 20)
+	}
+	return fmt.Sprintf("https://t.me/c/%d/%d", channelID, linkMsgID)
 }
 
 // FormatSummaryForDisplay 将 SummaryResult 格式化为目标样式的 HTML 文本

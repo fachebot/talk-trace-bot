@@ -155,6 +155,12 @@ func TestBuildMessageLink(t *testing.T) {
 			want:      "https://t.me/c/1427755127/2868456",
 		},
 		{
+			name:      "TDLib 大 message_id 转为链接用逻辑 ID（28132245504>>20=26829）",
+			chatID:    -1003634348229,
+			messageID: 28132245504,
+			want:      "https://t.me/c/3634348229/26829",
+		},
+		{
 			name:      "非超级群组返回空",
 			chatID:    -123456,
 			messageID: 100,
