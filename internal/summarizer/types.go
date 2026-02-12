@@ -1,19 +1,19 @@
 package summarizer
 
-// MemberSummaryItem 单个成员的总结
-type MemberSummaryItem struct {
-	SenderName string `json:"sender_name"`
-	SenderID   int64  `json:"sender_id"`
-	Summary    string `json:"summary"`
+// TopicSubItem 话题下的单条子项（某个发言者的贡献）
+type TopicSubItem struct {
+	SenderName  string  `json:"sender_name"`
+	Description string  `json:"description"`
+	MessageIDs  []int64 `json:"message_ids"`
 }
 
-// GroupSummaryItem 群组总结
-type GroupSummaryItem struct {
-	Summary string `json:"summary"`
+// TopicItem 单个话题
+type TopicItem struct {
+	Title string         `json:"title"`
+	Items []TopicSubItem `json:"items"`
 }
 
-// SummaryResult 总结结果，包含成员总结和群组总结
+// SummaryResult 总结结果，按话题分组
 type SummaryResult struct {
-	MemberSummaries []MemberSummaryItem `json:"member_summaries"`
-	GroupSummary    GroupSummaryItem    `json:"group_summary"`
+	Topics []TopicItem `json:"topics"`
 }

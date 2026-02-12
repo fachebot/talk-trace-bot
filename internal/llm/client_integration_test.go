@@ -41,45 +41,36 @@ func TestSummarizeChat_Integration(t *testing.T) {
 	defer cancel()
 
 	msgs := []ChatMessage{
-		{SenderID: 1, SenderName: "张三", Text: "大家下午好，我们来同步一下本周进度"},
-		{SenderID: 2, SenderName: "李四", Text: "好的，我这边前端页面基本完成了，还差几个接口联调"},
-		{SenderID: 3, SenderName: "王五", Text: "后端 API 已经开发完了，文档也更新到 swagger 了"},
-		{SenderID: 1, SenderName: "张三", Text: "不错，李四你明天跟王五对接一下，把接口串起来"},
-		{SenderID: 2, SenderName: "李四", Text: "行，我上午找他"},
-		{SenderID: 4, SenderName: "赵六", Text: "测试环境我部署好了，你们联调完告诉我，我安排回归测试"},
-		{SenderID: 1, SenderName: "张三", Text: "好，我们争取周四前完成联调，周五留给测试"},
-		{SenderID: 3, SenderName: "王五", Text: "有个问题，用户登录那块需要加个验证码，可能要多半天"},
-		{SenderID: 1, SenderName: "张三", Text: "可以，你评估一下，如果时间紧就跟我说，咱们看能不能砍掉一些非核心需求"},
-		{SenderID: 2, SenderName: "李四", Text: "收到，大家加油"},
+		{MessageID: 1001, SenderID: 1, SenderName: "张三", Text: "大家下午好，我们来同步一下本周进度"},
+		{MessageID: 1002, SenderID: 2, SenderName: "李四", Text: "好的，我这边前端页面基本完成了，还差几个接口联调"},
+		{MessageID: 1003, SenderID: 3, SenderName: "王五", Text: "后端 API 已经开发完了，文档也更新到 swagger 了"},
+		{MessageID: 1004, SenderID: 1, SenderName: "张三", Text: "不错，李四你明天跟王五对接一下，把接口串起来"},
+		{MessageID: 1005, SenderID: 2, SenderName: "李四", Text: "行，我上午找他"},
+		{MessageID: 1006, SenderID: 4, SenderName: "赵六", Text: "测试环境我部署好了，你们联调完告诉我，我安排回归测试"},
+		{MessageID: 1007, SenderID: 1, SenderName: "张三", Text: "好，我们争取周四前完成联调，周五留给测试"},
+		{MessageID: 1008, SenderID: 3, SenderName: "王五", Text: "有个问题，用户登录那块需要加个验证码，可能要多半天"},
+		{MessageID: 1009, SenderID: 1, SenderName: "张三", Text: "可以，你评估一下，如果时间紧就跟我说，咱们看能不能砍掉一些非核心需求"},
+		{MessageID: 1010, SenderID: 2, SenderName: "李四", Text: "收到，大家加油"},
 	}
 
 	result, err := client.SummarizeChat(ctx, msgs)
 	require.NoError(t, err)
 	require.NotEmpty(t, result)
 
-	var parsed struct {
-		MemberSummaries []struct {
-			SenderName string `json:"sender_name"`
-			SenderID   int64  `json:"sender_id"`
-			Summary    string `json:"summary"`
-		} `json:"member_summaries"`
-		GroupSummary struct {
-			Summary string `json:"summary"`
-		} `json:"group_summary"`
-	}
+	var parsed topicsSummaryJSON
 	err = json.Unmarshal([]byte(result), &parsed)
 	require.NoError(t, err, "返回内容应是合法 JSON: %s", result)
 
-	assert.GreaterOrEqual(t, len(parsed.MemberSummaries), 1, "应有至少一位成员总结")
-	assert.NotEmpty(t, parsed.GroupSummary.Summary, "应有群组总结")
+	assert.GreaterOrEqual(t, len(parsed.Topics), 1, "应有至少一个话题")
 
 	// 输出总结内容
-	t.Log("\n--- 成员总结 ---")
-	for _, m := range parsed.MemberSummaries {
-		t.Logf("- %s: %s", m.SenderName, m.Summary)
+	t.Log("\n--- 话题总结 ---")
+	for i, topic := range parsed.Topics {
+		t.Logf("%d. %s", i+1, topic.Title)
+		for _, item := range topic.Items {
+			t.Logf("   - %s: %s (msgs: %v)", item.SenderName, item.Description, item.MessageIDs)
+		}
 	}
-	t.Log("\n--- 群组总结 ---")
-	t.Log(parsed.GroupSummary.Summary)
 }
 
 func TestSummarizeChat_Integration_EmptyMessages(t *testing.T) {
@@ -103,24 +94,15 @@ func TestSummarizeChat_Integration_SingleMessage(t *testing.T) {
 	defer cancel()
 
 	msgs := []ChatMessage{
-		{SenderID: 100, SenderName: "测试用户", Text: "这是一条单条消息的测试"},
+		{MessageID: 2001, SenderID: 100, SenderName: "测试用户", Text: "这是一条单条消息的测试"},
 	}
 
 	result, err := client.SummarizeChat(ctx, msgs)
 	require.NoError(t, err)
 	require.NotEmpty(t, result)
 
-	var parsed struct {
-		MemberSummaries []struct {
-			SenderName string `json:"sender_name"`
-			Summary    string `json:"summary"`
-		} `json:"member_summaries"`
-		GroupSummary struct {
-			Summary string `json:"summary"`
-		} `json:"group_summary"`
-	}
+	var parsed topicsSummaryJSON
 	err = json.Unmarshal([]byte(result), &parsed)
 	require.NoError(t, err)
-	assert.Len(t, parsed.MemberSummaries, 1)
-	assert.Equal(t, "测试用户", parsed.MemberSummaries[0].SenderName)
+	assert.GreaterOrEqual(t, len(parsed.Topics), 1, "应有至少一个话题")
 }

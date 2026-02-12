@@ -8,7 +8,6 @@ import (
 
 	"github.com/fachebot/talk-trace-bot/internal/ent"
 	"github.com/fachebot/talk-trace-bot/internal/llm"
-	"github.com/fachebot/talk-trace-bot/internal/model"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -38,20 +37,9 @@ func (m *mockLLMSummarizer) SummarizeChat(ctx context.Context, messages []llm.Ch
 	return m.jsonResp, nil
 }
 
-// mockSummaryWriter 用于测试的 summaryWriter mock
-type mockSummaryWriter struct {
-	err error
-}
-
-func (m *mockSummaryWriter) CreateOrUpdate(ctx context.Context, data *model.SummaryData) (*ent.Summary, error) {
-	if m.err != nil {
-		return nil, m.err
-	}
-	return &ent.Summary{}, nil
-}
-
-func mustEntMessage(senderID int64, senderName, text string, sentAt time.Time) *ent.Message {
+func mustEntMessage(messageID int64, senderID int64, senderName, text string, sentAt time.Time) *ent.Message {
 	return &ent.Message{
+		MessageID:  messageID,
 		SenderID:   senderID,
 		SenderName: senderName,
 		Text:       text,
@@ -60,59 +48,129 @@ func mustEntMessage(senderID int64, senderName, text string, sentAt time.Time) *
 }
 
 func TestFormatSummaryForDisplay(t *testing.T) {
+	// 使用典型超级群组 chatID: -1001427755127
+	chatID := int64(-1001427755127)
+
 	tests := []struct {
-		name     string
-		result   *SummaryResult
-		dateRange string
-		want     string
+		name      string
+		result    *SummaryResult
+		chatID    int64
+		startDate string
+		endDate   string
+		want      string
 	}{
 		{
-			name:     "nil result 返回空字符串",
-			result:   nil,
-			dateRange: "2025-02-01 ~ 2025-02-07",
-			want:     "",
+			name:      "nil result 返回空字符串",
+			result:    nil,
+			chatID:    chatID,
+			startDate: "2026-02-11",
+			endDate:   "2026-02-11",
+			want:      "",
 		},
 		{
-			name:     "空结果返回空字符串",
-			result:   &SummaryResult{},
-			dateRange: "2025-02-01 ~ 2025-02-07",
-			want:     "",
+			name:      "空结果返回空字符串",
+			result:    &SummaryResult{},
+			chatID:    chatID,
+			startDate: "2026-02-11",
+			endDate:   "2026-02-11",
+			want:      "",
 		},
 		{
-			name: "仅有群组总结",
+			name: "单个话题格式正确",
 			result: &SummaryResult{
-				GroupSummary: GroupSummaryItem{Summary: "本周讨论了项目进度"},
-			},
-			dateRange: "2025-02-01 ~ 2025-02-07",
-			want:     "📊 2025-02-01 ~ 2025-02-07 群聊总结\n\n--- 群组总结 ---\n本周讨论了项目进度",
-		},
-		{
-			name: "仅有成员总结",
-			result: &SummaryResult{
-				MemberSummaries: []MemberSummaryItem{
-					{SenderName: "张三", SenderID: 1, Summary: "分享了技术方案"},
-					{SenderName: "李四", SenderID: 2, Summary: "汇报了进展"},
+				Topics: []TopicItem{
+					{
+						Title: "技术方案讨论",
+						Items: []TopicSubItem{
+							{
+								SenderName:  "张三",
+								Description: "分享了技术方案",
+								MessageIDs:  []int64{100, 101},
+							},
+							{
+								SenderName:  "李四",
+								Description: "提出了优化建议",
+								MessageIDs:  []int64{102},
+							},
+						},
+					},
 				},
 			},
-			dateRange: "2025-02-01 ~ 2025-02-07",
-			want:     "📊 2025-02-01 ~ 2025-02-07 群聊总结\n\n--- 成员总结 ---\n- 张三: 分享了技术方案\n- 李四: 汇报了进展",
+			chatID:    chatID,
+			startDate: "2026-02-11",
+			endDate:   "2026-02-11",
+			want: "📊 <b>群组总结</b>\n📅 2026-02-11 至 2026-02-11 (UTC)\n\n" +
+				"1. 技术方案讨论\n" +
+				"- <b>张三</b> 分享了技术方案 [<a href=\"https://t.me/c/1427755127/100\">link</a>] [<a href=\"https://t.me/c/1427755127/101\">link</a>]\n" +
+				"- <b>李四</b> 提出了优化建议 [<a href=\"https://t.me/c/1427755127/102\">link</a>]\n",
 		},
 		{
-			name: "成员总结和群组总结都有",
+			name: "多个话题格式正确",
 			result: &SummaryResult{
-				MemberSummaries: []MemberSummaryItem{
-					{SenderName: "张三", SenderID: 1, Summary: "分享了技术方案"},
+				Topics: []TopicItem{
+					{
+						Title: "话题一",
+						Items: []TopicSubItem{
+							{SenderName: "A", Description: "说了什么", MessageIDs: []int64{1}},
+						},
+					},
+					{
+						Title: "话题二",
+						Items: []TopicSubItem{
+							{SenderName: "B", Description: "做了什么", MessageIDs: []int64{2}},
+						},
+					},
 				},
-				GroupSummary: GroupSummaryItem{Summary: "整体进展顺利"},
 			},
-			dateRange: "2025-02-01 ~ 2025-02-07",
-			want:     "📊 2025-02-01 ~ 2025-02-07 群聊总结\n\n--- 成员总结 ---\n- 张三: 分享了技术方案\n\n--- 群组总结 ---\n整体进展顺利",
+			chatID:    chatID,
+			startDate: "2026-02-10",
+			endDate:   "2026-02-11",
+			want: "📊 <b>群组总结</b>\n📅 2026-02-10 至 2026-02-11 (UTC)\n\n" +
+				"1. 话题一\n" +
+				"- <b>A</b> 说了什么 [<a href=\"https://t.me/c/1427755127/1\">link</a>]\n\n" +
+				"2. 话题二\n" +
+				"- <b>B</b> 做了什么 [<a href=\"https://t.me/c/1427755127/2\">link</a>]\n",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := FormatSummaryForDisplay(tt.result, tt.dateRange)
+			got := FormatSummaryForDisplay(tt.result, tt.chatID, tt.startDate, tt.endDate)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestBuildMessageLink(t *testing.T) {
+	tests := []struct {
+		name      string
+		chatID    int64
+		messageID int64
+		want      string
+	}{
+		{
+			name:      "超级群组链接",
+			chatID:    -1001427755127,
+			messageID: 2868456,
+			want:      "https://t.me/c/1427755127/2868456",
+		},
+		{
+			name:      "非超级群组返回空",
+			chatID:    -123456,
+			messageID: 100,
+			want:      "",
+		},
+		{
+			name:      "正数 chatID 返回空",
+			chatID:    12345,
+			messageID: 100,
+			want:      "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := buildMessageLink(tt.chatID, tt.messageID)
 			assert.Equal(t, tt.want, got)
 		})
 	}
@@ -150,7 +208,7 @@ func TestSummarizeRange_LLMError(t *testing.T) {
 	s := &Summarizer{
 		messageModel: &mockMessageProvider{
 			messages: []*ent.Message{
-				mustEntMessage(1, "张三", "你好", now),
+				mustEntMessage(100, 1, "张三", "你好", now),
 			},
 		},
 		llmClient: &mockLLMSummarizer{err: errors.New("api error")},
@@ -170,7 +228,7 @@ func TestSummarizeRange_InvalidJSON(t *testing.T) {
 	s := &Summarizer{
 		messageModel: &mockMessageProvider{
 			messages: []*ent.Message{
-				mustEntMessage(1, "张三", "你好", now),
+				mustEntMessage(100, 1, "张三", "你好", now),
 			},
 		},
 		llmClient: &mockLLMSummarizer{jsonResp: "not valid json"},
@@ -189,15 +247,14 @@ func TestSummarizeRange_Success(t *testing.T) {
 	now := time.Now()
 	msgProvider := &mockMessageProvider{
 		messages: []*ent.Message{
-			mustEntMessage(1, "张三", "分享了技术方案", now),
-			mustEntMessage(2, "李四", "汇报了进展", now),
+			mustEntMessage(100, 1, "张三", "分享了技术方案", now),
+			mustEntMessage(101, 2, "李四", "汇报了进展", now),
 		},
 	}
-	llmResp := `{"member_summaries":[{"sender_name":"张三","sender_id":1,"summary":"张三分享了技术方案"},{"sender_name":"李四","sender_id":2,"summary":"李四汇报了进展"}],"group_summary":{"summary":"整体进展顺利"}}`
+	llmResp := `{"topics":[{"title":"技术讨论","items":[{"sender_name":"张三","description":"分享了技术方案","message_ids":[100]},{"sender_name":"李四","description":"汇报了进展","message_ids":[101]}]}]}`
 	s := &Summarizer{
 		messageModel: msgProvider,
 		llmClient:    &mockLLMSummarizer{jsonResp: llmResp},
-		summaryModel: &mockSummaryWriter{},
 	}
 	ctx := context.Background()
 	start := time.Date(2025, 2, 1, 0, 0, 0, 0, time.UTC)
@@ -209,25 +266,25 @@ func TestSummarizeRange_Success(t *testing.T) {
 	if !requireNotNil {
 		return
 	}
-	assert.Len(t, result.MemberSummaries, 2)
-	assert.Equal(t, "张三", result.MemberSummaries[0].SenderName)
-	assert.Equal(t, int64(1), result.MemberSummaries[0].SenderID)
-	assert.Equal(t, "张三分享了技术方案", result.MemberSummaries[0].Summary)
-	assert.Equal(t, "李四", result.MemberSummaries[1].SenderName)
-	assert.Equal(t, "整体进展顺利", result.GroupSummary.Summary)
+	assert.Len(t, result.Topics, 1)
+	assert.Equal(t, "技术讨论", result.Topics[0].Title)
+	assert.Len(t, result.Topics[0].Items, 2)
+	assert.Equal(t, "张三", result.Topics[0].Items[0].SenderName)
+	assert.Equal(t, "分享了技术方案", result.Topics[0].Items[0].Description)
+	assert.Equal(t, []int64{100}, result.Topics[0].Items[0].MessageIDs)
 }
 
 func TestSummarizeRange_PassesStructuredMessages(t *testing.T) {
 	now := time.Now()
 	msgProvider := &mockMessageProvider{
 		messages: []*ent.Message{
-			mustEntMessage(100, "Alice", "Hello world", now),
-			mustEntMessage(200, "Bob", "Hi there", now),
+			mustEntMessage(500, 100, "Alice", "Hello world", now),
+			mustEntMessage(501, 200, "Bob", "Hi there", now),
 		},
 	}
 	var capturedMsgs []llm.ChatMessage
 	llmMock := &mockLLMSummarizer{
-		jsonResp: `{"member_summaries":[{"sender_name":"Alice","sender_id":100,"summary":"said hello"},{"sender_name":"Bob","sender_id":200,"summary":"said hi"}],"group_summary":{"summary":"greetings"}}`,
+		jsonResp: `{"topics":[{"title":"Greetings","items":[{"sender_name":"Alice","description":"said hello","message_ids":[500]},{"sender_name":"Bob","description":"said hi","message_ids":[501]}]}]}`,
 	}
 	llmWrapper := &capturingLLM{
 		inner:   llmMock,
@@ -236,7 +293,6 @@ func TestSummarizeRange_PassesStructuredMessages(t *testing.T) {
 	s := &Summarizer{
 		messageModel: msgProvider,
 		llmClient:    llmWrapper,
-		summaryModel: &mockSummaryWriter{},
 	}
 	ctx := context.Background()
 	start := time.Date(2025, 2, 1, 0, 0, 0, 0, time.UTC)
@@ -245,9 +301,11 @@ func TestSummarizeRange_PassesStructuredMessages(t *testing.T) {
 	_, err := s.SummarizeRange(ctx, 123, start, end)
 	assert.NoError(t, err)
 	assert.Len(t, capturedMsgs, 2)
+	assert.Equal(t, int64(500), capturedMsgs[0].MessageID)
 	assert.Equal(t, int64(100), capturedMsgs[0].SenderID)
 	assert.Equal(t, "Alice", capturedMsgs[0].SenderName)
 	assert.Equal(t, "Hello world", capturedMsgs[0].Text)
+	assert.Equal(t, int64(501), capturedMsgs[1].MessageID)
 	assert.Equal(t, int64(200), capturedMsgs[1].SenderID)
 	assert.Equal(t, "Bob", capturedMsgs[1].SenderName)
 	assert.Equal(t, "Hi there", capturedMsgs[1].Text)

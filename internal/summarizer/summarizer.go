@@ -23,23 +23,26 @@ type llmSummarizer interface {
 	SummarizeChat(ctx context.Context, messages []llm.ChatMessage) (string, error)
 }
 
-// summaryWriter 写入摘要（便于测试注入 mock）
-type summaryWriter interface {
-	CreateOrUpdate(ctx context.Context, data *model.SummaryData) (*ent.Summary, error)
-}
-
 type Summarizer struct {
 	llmClient    llmSummarizer
 	messageModel messageProvider
-	summaryModel summaryWriter
 }
 
-func NewSummarizer(llmClient *llm.Client, messageModel *model.MessageModel, summaryModel *model.SummaryModel) *Summarizer {
+func NewSummarizer(llmClient *llm.Client, messageModel *model.MessageModel) *Summarizer {
 	return &Summarizer{
 		llmClient:    llmClient,
 		messageModel: messageModel,
-		summaryModel: summaryModel,
 	}
+}
+
+// escapeHTML 对文本进行 HTML 转义，防止注入及破坏标签
+// 转义：& < > "
+func escapeHTML(text string) string {
+	result := strings.ReplaceAll(text, "&", "&amp;")
+	result = strings.ReplaceAll(result, "<", "&lt;")
+	result = strings.ReplaceAll(result, ">", "&gt;")
+	result = strings.ReplaceAll(result, "\"", "&quot;")
+	return result
 }
 
 // SummarizeRange 生成指定时间区间的群聊总结
@@ -60,10 +63,11 @@ func (s *Summarizer) SummarizeRange(ctx context.Context, chatID int64, startTime
 
 	logger.Infof("[Summarizer] 找到 %d 条消息", len(messages))
 
-	// 转换为结构化消息数组
+	// 转换为结构化消息数组（包含 MessageID）
 	chatMsgs := make([]llm.ChatMessage, len(messages))
 	for i, msg := range messages {
 		chatMsgs[i] = llm.ChatMessage{
+			MessageID:  msg.MessageID,
 			SenderID:   msg.SenderID,
 			SenderName: msg.SenderName,
 			Text:       msg.Text,
@@ -78,49 +82,52 @@ func (s *Summarizer) SummarizeRange(ctx context.Context, chatID int64, startTime
 
 	var result SummaryResult
 	if err := json.Unmarshal([]byte(jsonStr), &result); err != nil {
+		logger.Debugf("[Summarizer] 解析 LLM 返回的 JSON 失败: %s", jsonStr)
 		return nil, fmt.Errorf("解析 LLM 返回的 JSON 失败: %w", err)
 	}
 
-	// 将 member_summaries 写入 Summary 表（同一群组、同一发送者、同一日期不重复插入，已存在则更新）
-	for _, m := range result.MemberSummaries {
-		summaryData := &model.SummaryData{
-			ChatID:      chatID,
-			SenderID:    m.SenderID,
-			SenderName:  m.SenderName,
-			SummaryDate: startTime,
-			Content:     m.Summary,
-		}
-		if _, err := s.summaryModel.CreateOrUpdate(ctx, summaryData); err != nil {
-			logger.Errorf("[Summarizer] 保存摘要失败: %v", err)
-		}
-	}
-
-	logger.Infof("[Summarizer] 完成总结，共 %d 位成员", len(result.MemberSummaries))
+	logger.Infof("[Summarizer] 完成总结，共 %d 个话题", len(result.Topics))
 	return &result, nil
 }
 
-// FormatSummaryForDisplay 将 SummaryResult 格式化为可读文本
-func FormatSummaryForDisplay(result *SummaryResult, dateRange string) string {
-	if result == nil || (len(result.MemberSummaries) == 0 && result.GroupSummary.Summary == "") {
+// buildMessageLink 构造 Telegram 超级群组消息链接
+// TDLib 超级群组 chat_id 格式为 -100XXXXXXXXXX，channel_id = -chat_id - 1000000000000
+func buildMessageLink(chatID int64, messageID int64) string {
+	channelID := -chatID - 1000000000000
+	if channelID <= 0 {
+		// 非超级群组，返回空
+		return ""
+	}
+	return fmt.Sprintf("https://t.me/c/%d/%d", channelID, messageID)
+}
+
+// FormatSummaryForDisplay 将 SummaryResult 格式化为目标样式的 HTML 文本
+// 使用 Telegram HTML 语法：<b>粗体</b>、<a href="url">link</a>
+func FormatSummaryForDisplay(result *SummaryResult, chatID int64, startDate, endDate string) string {
+	if result == nil || len(result.Topics) == 0 {
 		return ""
 	}
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("📊 %s 群聊总结\n\n", dateRange))
 
-	if len(result.MemberSummaries) > 0 {
-		sb.WriteString("--- 成员总结 ---\n")
-		for _, m := range result.MemberSummaries {
-			sb.WriteString(fmt.Sprintf("- %s: %s\n", m.SenderName, m.Summary))
+	// 头部
+	sb.WriteString("📊 <b>群组总结</b>\n")
+	sb.WriteString(fmt.Sprintf("📅 %s 至 %s (UTC)\n", escapeHTML(startDate), escapeHTML(endDate)))
+
+	// 话题列表（用户内容需 HTML 转义）
+	for i, topic := range result.Topics {
+		sb.WriteString(fmt.Sprintf("\n%d. %s\n", i+1, escapeHTML(topic.Title)))
+		for _, item := range topic.Items {
+			sb.WriteString(fmt.Sprintf("- <b>%s</b> %s", escapeHTML(item.SenderName), escapeHTML(item.Description)))
+			for _, msgID := range item.MessageIDs {
+				link := buildMessageLink(chatID, msgID)
+				if link != "" {
+					sb.WriteString(fmt.Sprintf(" [<a href=\"%s\">link</a>]", escapeHTML(link)))
+				}
+			}
+			sb.WriteString("\n")
 		}
-		sb.WriteString("\n")
 	}
 
-	if result.GroupSummary.Summary != "" {
-		sb.WriteString("--- 群组总结 ---\n")
-		sb.WriteString(result.GroupSummary.Summary)
-		sb.WriteString("\n")
-	}
-
-	return strings.TrimRight(sb.String(), "\n")
+	return sb.String()
 }

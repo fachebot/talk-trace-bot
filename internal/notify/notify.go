@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	MaxMessageLength = 4096 // Telegram 消息最大长度
+	MaxMessageLength = 5000 // Telegram 消息最大长度
 )
 
 type Notifier struct {
@@ -60,15 +60,14 @@ func (n *Notifier) notifyPrivate(ctx context.Context, content string) error {
 	}
 
 	messages := n.splitMessage(content)
-	
+
 	for _, userID := range n.config.NotifyUserIds {
 		for _, msg := range messages {
+			formatted := n.parseHTMLText(msg)
 			_, err := n.tdClient.SendMessage(&client.SendMessageRequest{
 				ChatId: userID,
 				InputMessageContent: &client.InputMessageText{
-					Text: &client.FormattedText{
-						Text: msg,
-					},
+					Text: formatted,
 				},
 			})
 			if err != nil {
@@ -84,14 +83,14 @@ func (n *Notifier) notifyPrivate(ctx context.Context, content string) error {
 // notifyGroup 发送群聊通知
 func (n *Notifier) notifyGroup(ctx context.Context, content string, chatID int64) error {
 	messages := n.splitMessage(content)
-	
+
 	for _, msg := range messages {
+		formatted := n.parseHTMLText(msg)
+
 		_, err := n.tdClient.SendMessage(&client.SendMessageRequest{
 			ChatId: chatID,
 			InputMessageContent: &client.InputMessageText{
-				Text: &client.FormattedText{
-					Text: msg,
-				},
+				Text: formatted,
 			},
 		})
 		if err != nil {
@@ -101,6 +100,24 @@ func (n *Notifier) notifyGroup(ctx context.Context, content string, chatID int64
 	}
 
 	return nil
+}
+
+// parseHTMLText 使用 TDLib 的 HTML 解析能力，将 HTML 文本转换为带实体的 FormattedText。
+// 支持的 HTML 标签：<b>粗体</b>、<a href="url">链接</a>
+func (n *Notifier) parseHTMLText(text string) *client.FormattedText {
+	if text == "" {
+		return &client.FormattedText{Text: text}
+	}
+
+	formatted, err := client.ParseTextEntities(&client.ParseTextEntitiesRequest{
+		Text:      text,
+		ParseMode: &client.TextParseModeHTML{},
+	})
+	if err != nil {
+		logger.Warnf("[Notify] 解析 HTML 文本失败，回退为纯文本发送: %v", err)
+		return &client.FormattedText{Text: text}
+	}
+	return formatted
 }
 
 // splitMessage 将消息按长度拆分为多条

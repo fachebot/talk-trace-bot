@@ -30,8 +30,8 @@ type Scheduler struct {
 	mu            sync.Mutex
 }
 
-// locUTC8 东八区（UTC+8 / Asia/Shanghai）
-var locUTC8 = time.FixedZone("UTC+8", 8*60*60)
+// locUTC UTC 标准时间（UTC）
+var locUTC = time.UTC
 
 func NewScheduler(
 	summarizer *summarizer.Summarizer,
@@ -42,7 +42,7 @@ func NewScheduler(
 	cfg *config.Summary,
 ) *Scheduler {
 	return &Scheduler{
-		cron:          cron.New(cron.WithLocation(locUTC8)),
+		cron:          cron.New(cron.WithLocation(locUTC)),
 		summarizer:    summarizer,
 		notifier:      notifier,
 		messageModel:  messageModel,
@@ -121,8 +121,8 @@ func (s *Scheduler) recoverDailySummary() {
 	if rangeDays <= 0 {
 		rangeDays = 1
 	}
-	now := time.Now().In(locUTC8)
-	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, locUTC8)
+	now := time.Now().In(locUTC)
+	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, locUTC)
 	endTime := todayStart
 	startTime := todayStart.AddDate(0, 0, -rangeDays)
 
@@ -160,7 +160,7 @@ func (s *Scheduler) recoverPendingTasks(ctx context.Context) {
 	}
 
 	logger.Infof("[Scheduler] 找到 %d 个未完成的任务，开始恢复", len(tasks))
-	cutoffTime := time.Now().In(locUTC8).AddDate(0, 0, -7)
+	cutoffTime := time.Now().In(locUTC).AddDate(0, 0, -7)
 
 	for _, t := range tasks {
 		select {
@@ -222,8 +222,8 @@ func (s *Scheduler) runDailySummary() {
 	if rangeDays <= 0 {
 		rangeDays = 1
 	}
-	now := time.Now().In(locUTC8)
-	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, locUTC8)
+	now := time.Now().In(locUTC)
+	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, locUTC)
 	endTime := todayStart
 	startTime := todayStart.AddDate(0, 0, -rangeDays)
 
@@ -359,7 +359,8 @@ func (s *Scheduler) executeDailySummaryForRange(ctx context.Context, startTime, 
 
 // generateSummaryForTask 阶段一：生成总结。内含摘要重试循环；无消息或空内容时返回 summary=="" 且 err==nil 表示跳过通知。
 func (s *Scheduler) generateSummaryForTask(ctx context.Context, chatID int64, startTime, endTime time.Time) (summary string, err error) {
-	dateRange := fmt.Sprintf("%s ~ %s", startTime.Format("2006-01-02"), endTime.AddDate(0, 0, -1).Format("2006-01-02"))
+	startDate := startTime.Format("2006-01-02")
+	endDate := endTime.AddDate(0, 0, -1).Format("2006-01-02")
 
 	retryTimes := s.config.RetryTimes
 	if retryTimes <= 0 {
@@ -405,7 +406,7 @@ func (s *Scheduler) generateSummaryForTask(ctx context.Context, chatID int64, st
 		return "", nil
 	}
 
-	summary = summarizer.FormatSummaryForDisplay(result, dateRange)
+	summary = summarizer.FormatSummaryForDisplay(result, chatID, startDate, endDate)
 	if summary == "" {
 		logger.Infof("[Scheduler] 群组 %d: 总结内容为空，跳过通知", chatID)
 		return "", nil
@@ -485,8 +486,8 @@ func (s *Scheduler) processTask(ctx context.Context, chatID int64, startTime, en
 
 // cleanupMessages 执行消息清理
 func (s *Scheduler) cleanupMessages(ctx context.Context) {
-	cutoffDate := time.Now().In(locUTC8).AddDate(0, 0, -s.config.RetentionDays-1)
-	cutoffDate = time.Date(cutoffDate.Year(), cutoffDate.Month(), cutoffDate.Day(), 0, 0, 0, 0, locUTC8)
+	cutoffDate := time.Now().In(locUTC).AddDate(0, 0, -s.config.RetentionDays-1)
+	cutoffDate = time.Date(cutoffDate.Year(), cutoffDate.Month(), cutoffDate.Day(), 0, 0, 0, 0, locUTC)
 
 	logger.Infof("[Scheduler] 开始清理 %s 之前的消息", cutoffDate.Format("2006-01-02"))
 	deleted, err := s.messageModel.DeleteBefore(ctx, cutoffDate)

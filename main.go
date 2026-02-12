@@ -65,7 +65,6 @@ func main() {
 	summarizerInstance := summarizer.NewSummarizer(
 		svcCtx.LLMClient,
 		svcCtx.MessageModel,
-		svcCtx.SummaryModel,
 	)
 	notifierInstance := notify.NewNotifier(
 		app.Client(),
