@@ -141,6 +141,24 @@ func TestFormatSummaryForDisplay(t *testing.T) {
 	}
 }
 
+func TestToLinkMessageID(t *testing.T) {
+	tests := []struct {
+		name string
+		in   int64
+		want int64
+	}{
+		{"TDLib 大 ID 右移 20 位", 28132245504, 26829},
+		{"已是短 ID 不变", 26829, 26829},
+		{"小 ID 不变", 100, 100},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := toLinkMessageID(tt.in)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
 func TestBuildMessageLink(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -155,9 +173,9 @@ func TestBuildMessageLink(t *testing.T) {
 			want:      "https://t.me/c/1427755127/2868456",
 		},
 		{
-			name:      "TDLib 大 message_id 转为链接用逻辑 ID（28132245504>>20=26829）",
+			name:      "超级群组使用链接用短 message_id",
 			chatID:    -1003634348229,
-			messageID: 28132245504,
+			messageID: 26829,
 			want:      "https://t.me/c/3634348229/26829",
 		},
 		{

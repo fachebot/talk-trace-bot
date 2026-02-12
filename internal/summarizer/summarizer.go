@@ -35,6 +35,16 @@ func NewSummarizer(llmClient *llm.Client, messageModel *model.MessageModel) *Sum
 	}
 }
 
+// toLinkMessageID 将 TDLib 的 message_id 转为 t.me 链接用逻辑 ID（大 ID >>20，小 ID 不变）
+const tdlibInternalIDThreshold = 1 << 30
+
+func toLinkMessageID(messageID int64) int64 {
+	if messageID >= tdlibInternalIDThreshold {
+		return int64(uint64(messageID) >> 20)
+	}
+	return messageID
+}
+
 // escapeHTML 对文本进行 HTML 转义，防止注入及破坏标签
 // 转义：& < > "
 func escapeHTML(text string) string {
@@ -63,11 +73,11 @@ func (s *Summarizer) SummarizeRange(ctx context.Context, chatID int64, startTime
 
 	logger.Infof("[Summarizer] 找到 %d 条消息", len(messages))
 
-	// 转换为结构化消息数组（包含 MessageID）
+	// 转换为结构化消息数组；提交给 LLM 前将 message_id 转为链接用短 ID
 	chatMsgs := make([]llm.ChatMessage, len(messages))
 	for i, msg := range messages {
 		chatMsgs[i] = llm.ChatMessage{
-			MessageID:  msg.MessageID,
+			MessageID:  toLinkMessageID(msg.MessageID),
 			SenderID:   msg.SenderID,
 			SenderName: msg.SenderName,
 			Text:       msg.Text,
@@ -91,21 +101,15 @@ func (s *Summarizer) SummarizeRange(ctx context.Context, chatID int64, startTime
 }
 
 // buildMessageLink 构造 Telegram 超级群组消息链接
+// 调用方应传入已转换的链接用短 message_id（参见 toLinkMessageID）
 // TDLib 超级群组 chat_id 格式为 -100XXXXXXXXXX，channel_id = -chat_id - 1000000000000
-// 频道/超级群组中 TDLib 的 message.Id 为内部格式（逻辑 ID 左移 20 位），t.me 链接使用逻辑 ID，需右移还原
 func buildMessageLink(chatID int64, messageID int64) string {
 	channelID := -chatID - 1000000000000
 	if channelID <= 0 {
 		// 非超级群组，返回空
 		return ""
 	}
-	// TDLib 内部格式的 message_id 很大（约 2^30 以上），需 >>20 得到链接用逻辑 ID；否则已是链接用 ID
-	const tdlibInternalIDThreshold = 1 << 30
-	linkMsgID := messageID
-	if messageID >= tdlibInternalIDThreshold {
-		linkMsgID = int64(uint64(messageID) >> 20)
-	}
-	return fmt.Sprintf("https://t.me/c/%d/%d", channelID, linkMsgID)
+	return fmt.Sprintf("https://t.me/c/%d/%d", channelID, messageID)
 }
 
 // FormatSummaryForDisplay 将 SummaryResult 格式化为目标样式的 HTML 文本
